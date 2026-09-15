@@ -1155,7 +1155,7 @@ def render_vacation_section():
 <div class="section" id="vacation" style="padding:64px 0 8px;">
   <div class="section-head">
     <h2>휴가 사용 현황</h2>
-    <p>휴가 구글 시트의 ‘휴가 입력’ 탭을 읽어 달력과 월별 요약으로 보여줍니다. 새 휴가는 시트에 입력하면 5분 안에 반영돼요.</p>
+    <p>휴가 구글 시트 ‘휴가 입력’ 탭을 읽어 보여줍니다. 새 휴가는 시트에 입력하면 반영돼요.</p>
   </div>
 </div>
 """, unsafe_allow_html=True)
