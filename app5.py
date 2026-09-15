@@ -47,7 +47,7 @@ MEMBERS = [
 # ▸ .xlsx 파일을 드라이브에 그대로 올린 경우엔 [파일] → 'Google 스프레드시트로 저장' 후
 #   새로 생긴 시트의 링크를 쓰세요. (엑셀 원본 상태로는 읽히지 않아요)
 # ▸ 앱은 '휴가 입력' 탭만 읽고(시트는 수정하지 않음), 월별 요약·달력은 앱에서 계산합니다.
-VAC_SHEET_LINK = ""
+VAC_SHEET_LINK = "https://docs.google.com/spreadsheets/d/18f6OeOsjEQE7Rgj7QAKRsh_JK9KXAaNO/edit?gid=1847544715#gid=1847544715"
 VAC_TAB = "휴가 입력"        # 휴가 기록이 있는 탭 이름
 VAC_HEADER_ROWS = 3          # 그 탭에서 머리글(이름/사용일/…)이 있는 행 번호
 # 월별 요약에 항상 보일 구성원 (시트 '월별 요약' 순서). 기록에만 있는 이름은 자동으로 뒤에 붙어요.
