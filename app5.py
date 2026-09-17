@@ -54,6 +54,23 @@ VAC_HEADER_ROWS = 3          # 그 탭에서 머리글(이름/사용일/…)이 
 VAC_ROSTER = ["박경철", "이재경", "박근찬", "김문정", "전재민", "박지원", "정유리", "김강민", "문상원",
               "박민서", "하승연", "조수용", "박성현", "김수린", "김다연", "김주현", "이건우"]
 
+# 휴가 카운팅 기간 (개강일 기준)
+# ▸ 한 기간 = start(개강일) 당일부터 next(다음 개강일) '전날'까지. 이 안의 사용일만 합산합니다.
+# ▸ members 에 이름이 있으면 그 사람에게만 적용(신입생 등), None 이면 모든 구성원에게 적용되는 기본 기간.
+#   한 사람에게 두 기간이 겹치면 members 에 이름이 있는 기간이 우선이에요.
+# ▸ 이름은 시트 '휴가 입력' 탭에 적힌 이름(성 포함)과 똑같이 적어주세요.
+# ▸ 새 학기가 되면 지난 기간은 지우지 말고 아래에 새 기간을 추가하세요. (지난 기간 기록도 계속 조회돼요)
+VAC_TERMS = [
+    {"label": "기존 구성원", "basis": "포항공대 2026학년도 1학기 개강",
+     "start": "2026-02-23", "next": "2027-02-22",      # 다음 개강: 2027학년도 1학기
+     "basic": 10, "special": 5, "members": None},
+    {"label": "신입생", "basis": "2026 가을학기 개강",
+     "start": "2026-08-31", "next": "2027-03-01",      # 다음 개강: 2027 봄학기
+     "basic": 5, "special": 3,
+     "members": ["이건우", "김주현", "김다연", "박근찬", "이재경"]},
+    # ↑ 신규 포닥(박근찬·이재경)도 신입생 기준으로 볼 경우 members 에 "박근찬", "이재경" 을 추가하세요.
+]
+
 
 # ══════════════════════════════════════════════════
 #  공강표 데이터
@@ -867,9 +884,8 @@ def cal_legend():
         items += f"<span class='clg' style='background:{bg};color:{fg}'>{i + 1}. {name}</span>"
     return f"<div class='legend'><span class='lbl'>진행 단계</span>{items}</div>"
 
-
 # ══════════════════════════════════════════════════
-#  🌴 휴가 데이터 & 헬퍼 (구글 시트 읽기 전용 — 설정은 코드 맨 위 VAC_SHEET_LINK)
+#  🌴 휴가 데이터 & 헬퍼 (구글 시트 읽기 전용 — 설정은 코드 위쪽 VAC_SHEET_LINK / VAC_TERMS)
 # ══════════════════════════════════════════════════
 VAC_KINDS = {   # 분류 → (범례 이름, 배경색, 글자색)
     "annual":  ("연차", "#CCFBF1", "#0F766E"),
@@ -880,6 +896,43 @@ VAC_KINDS = {   # 분류 → (범례 이름, 배경색, 글자색)
 }
 _KST = datetime.timezone(datetime.timedelta(hours=9))
 _WD = ["월", "화", "수", "목", "금", "토", "일"]
+
+# 휴가 영역 전용 스타일 — 기존 CSS 문자열 끝에 덧붙입니다.
+_VAC_CSS = """
+/* ── 휴가 카운팅 기준 · 잔여 ── */
+.vrule{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 18px 12px;margin:0 0 16px;}
+.vrule h4{margin:0 0 4px;font-size:0.96rem;font-weight:800;color:var(--ink);}
+.vrule .rr{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:10px 0;border-bottom:1px solid var(--line);}
+.vrule .rper{font-weight:700;color:var(--ink);font-size:0.92rem;}
+.vrule .ral{font-weight:700;color:var(--accent-dark);font-size:0.9rem;}
+.vrule .rsub{flex-basis:100%;font-size:0.8rem;color:var(--muted);line-height:1.5;}
+.vrule .rfoot{font-size:0.8rem;color:var(--muted);margin:10px 0 0;line-height:1.6;}
+.vrule .rfoot b{color:#334155;}
+.vrule .rwarn{font-size:0.84rem;color:#B45309;background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:8px 12px;margin:8px 0 0;}
+.rst{font-size:0.74rem;font-weight:700;padding:2px 9px;border-radius:999px;}
+.rst.live{background:var(--accent-soft);color:var(--accent-dark);}
+.rst.wait{background:#EFF6FF;color:#1D4ED8;}
+.rst.done{background:#F1F5F9;color:#64748B;}
+.tpill{display:inline-block;font-size:0.72rem;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap;}
+.tpill.base{background:#F1F5F9;color:#475569;border:1px solid var(--line);}
+.tpill.own{background:#FEF3C7;color:#B45309;border:1px solid #FDE68A;}
+.vsum td.per{font-size:0.76rem;color:var(--muted);}
+.vsum td.use{min-width:88px;}
+.vsum td.rem{font-weight:800;color:var(--accent-dark);}
+.vsum td.rem.low{color:#B45309;}
+.vsum td.rem.over{color:#BE123C;}
+.vsum td.out{background:repeating-linear-gradient(135deg,#F8FAFC 0 4px,#EEF2F6 4px 8px);}
+.vsum .cap{color:#94A3B8;font-weight:600;font-size:0.76rem;}
+.vbar{width:72px;height:5px;margin:5px auto 0;background:#E2E8F0;border-radius:999px;overflow:hidden;}
+.vbar i{display:block;height:100%;background:var(--accent);}
+.vbar i.warn{background:#F59E0B;}
+.vbar i.over{background:#E11D48;}
+.vperiod{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:4px 0 0;font-size:0.92rem;font-weight:700;color:var(--ink);}
+.vperiod .rsub{font-size:0.8rem;font-weight:500;color:var(--muted);}
+.vstat span.hl{background:var(--accent-soft);color:var(--accent-dark);}
+.vstat span b.over{color:#BE123C;}
+"""
+CSS = CSS.replace("</style>", _VAC_CSS + "</style>")
 
 
 def _kst_today():
@@ -896,6 +949,10 @@ def _num(x):
     return f"{x:g}"
 
 
+def _dot(d):
+    return d.strftime("%Y.%m.%d")
+
+
 def _vac_kind(vtype):
     t = (vtype or "").replace(" ", "")
     if "병가" in t:
@@ -910,13 +967,20 @@ def _vac_kind(vtype):
 
 
 def _vac_days(vtype, raw):
-    """시트의 '차감 일수' 값이 있으면 그대로, 비어 있으면 시트 수식과 같은 규칙
-    (병가·특별휴가 0 / 반차 0.5 / 그 외 1)으로 계산."""
+    """기본 휴가에서 빠지는 일수. 시트의 '차감 일수' 값이 있으면 그대로, 비어 있으면
+    시트 수식과 같은 규칙(병가·특별휴가 0 / 반차 0.5 / 그 외 1)으로 계산."""
     try:
         return float((raw or "").replace(",", "."))
     except ValueError:
         k = _vac_kind(vtype)
         return 0.0 if k in ("sick", "special") else 0.5 if k == "half" else 1.0
+
+
+def _vac_sdays(vtype, kind):
+    """특별휴가 한도에서 빠지는 일수 (특별휴가 1일, 유형에 '반차'가 있으면 0.5일)."""
+    if kind != "special":
+        return 0.0
+    return 0.5 if "반차" in (vtype or "").replace(" ", "") else 1.0
 
 
 def _vac_date(s):
@@ -940,6 +1004,80 @@ def _vac_date(s):
         return None
 
 
+# ── 카운팅 기간 (VAC_TERMS) ──
+def _prep_terms():
+    out = []
+    for i, t in enumerate(VAC_TERMS):
+        t = dict(t)
+        t["key"] = i
+        t["start_d"] = datetime.date.fromisoformat(t["start"])
+        t["next_d"] = datetime.date.fromisoformat(t["next"])
+        t["end_d"] = t["next_d"] - datetime.timedelta(days=1)     # 다음 개강일 전날
+        t["members"] = list(t.get("members") or [])
+        t["basis"] = t.get("basis", "")
+        if t["next_d"] > t["start_d"]:
+            out.append(t)
+    return out
+
+
+_TERMS = _prep_terms()
+_TERM_BY_KEY = {t["key"]: t for t in _TERMS}
+
+
+def _applies(t, name):
+    """명단이 있는 기간은 명단에 있는 사람만, 기본 기간(명단 없음)은 누구에게나 적용."""
+    return (name in t["members"]) if t["members"] else True
+
+
+def term_on(name, d):
+    """날짜 d 의 휴가가 이 사람의 어느 기간에 합산되는지. 명단 기간 우선 → 기본 기간."""
+    hits = [t for t in _TERMS if _applies(t, name) and t["start_d"] <= d < t["next_d"]]
+    hits.sort(key=lambda t: 0 if t["members"] else 1)
+    return hits[0] if hits else None
+
+
+def current_term(name, today):
+    """오늘 이 사람에게 적용 중인 기간. 없으면 가장 최근에 시작한 기간(또는 가장 가까운 예정 기간)."""
+    t = term_on(name, today)
+    if t:
+        return t
+    mine = [t for t in _TERMS if _applies(t, name)]
+    past = [t for t in mine if t["start_d"] <= today]
+    if past:
+        return max(past, key=lambda t: (t["start_d"], bool(t["members"])))
+    return min(mine, key=lambda t: t["start_d"]) if mine else None
+
+
+def term_entries(entries, name, t):
+    return sorted((e for e in entries
+                   if e["name"] == name and t["start_d"] <= e["date"] < t["next_d"]
+                   and (term_on(name, e["date"]) or {}).get("key") == t["key"]),
+                  key=lambda e: e["date"])
+
+
+def vac_usage(entries, name, t):
+    es = term_entries(entries, name, t)
+    basic = sum(e["days"] for e in es if e["kind"] not in ("sick", "special"))
+    special = sum(e["sdays"] for e in es)
+    return {"entries": es, "basic": basic, "special": special,
+            "sick": sum(1 for e in es if e["kind"] == "sick"),
+            "basic_left": t["basic"] - basic, "special_left": t["special"] - special}
+
+
+def person_terms(entries, name):
+    """개인별 탭에서 고를 수 있는 기간. 신입생처럼 명단 기간이 있으면 기본 기간은 기록이 있을 때만."""
+    own = [t for t in _TERMS if t["members"] and name in t["members"]]
+    base = [t for t in _TERMS if not t["members"]]
+    if own:
+        base = [t for t in base if term_entries(entries, name, t)]
+    return sorted(own + base, key=lambda t: t["start_d"], reverse=True)
+
+
+def _tcls(t):
+    return "own" if t["members"] else "base"
+
+
+# ── 시트 읽기 ──
 def _sheet_parts(link):
     """공유 링크 → (시트 ID, gid). 링크 대신 ID만 넣어도 동작."""
     link = (link or "").strip()
@@ -959,7 +1097,7 @@ def _http_rows(url):
 
 
 def parse_vacations(rows):
-    """'휴가 입력' 탭의 행들 → ([{name, date, type, kind, days, note}], 머리글_찾음여부).
+    """'휴가 입력' 탭의 행들 → ([{name, date, type, kind, days, sdays, note}], 머리글_찾음여부).
     머리글을 못 찾으면 A~E 열(이름·사용일·유형·차감·비고) 순서로 가정합니다."""
     col = {"name": 0, "date": 1, "type": 2, "days": 3, "note": 4}
     start, found = 0, False
@@ -986,10 +1124,12 @@ def parse_vacations(rows):
         if not name or d is None:
             continue
         vtype = get(r, "type") or "연차"
-        if not found and _vac_kind(vtype) == "other":
+        kind = _vac_kind(vtype)
+        if not found and kind == "other":
             continue        # 머리글 없이 열 위치로 읽을 땐 휴가 유형이 확실한 행만 (엉뚱한 탭 방지)
-        out.append({"name": name, "date": d, "type": vtype, "kind": _vac_kind(vtype),
-                    "days": _vac_days(vtype, get(r, "days")), "note": get(r, "note")})
+        out.append({"name": name, "date": d, "type": vtype, "kind": kind,
+                    "days": _vac_days(vtype, get(r, "days")), "sdays": _vac_sdays(vtype, kind),
+                    "note": get(r, "note")})
     return out, found
 
 
@@ -1055,6 +1195,45 @@ def vac_legend():
     return f"<div class='legend'><span class='lbl'>휴가 유형</span>{items}</div>"
 
 
+# ── 카운팅 기준 안내 박스 ──
+def render_vac_rules(today):
+    live = [t for t in _TERMS if t["next_d"] > today]           # 진행 중 + 시작 전
+    show = sorted(live or _TERMS[-2:], key=lambda t: (bool(t["members"]), t["start_d"]))
+    rows = ""
+    for t in show:
+        if t["members"]:
+            who = "대상: " + "·".join(_short(n) for n in t["members"])
+        else:
+            ex = list(dict.fromkeys(
+                n for o in _TERMS if o["members"]
+                and o["start_d"] < t["next_d"] and t["start_d"] < o["next_d"]
+                for n in o["members"]))
+            who = ("·".join(_short(n) for n in ex) + " 제외 전원") if ex else "전 구성원"
+        if today < t["start_d"]:
+            st_txt, st_cls = f"시작 전 · D-{(t['start_d'] - today).days}", "wait"
+        elif today < t["next_d"]:
+            left = (t["end_d"] - today).days
+            st_txt, st_cls = ("오늘 마감" if left == 0 else f"진행 중 · 마감까지 {left}일"), "live"
+        else:
+            st_txt, st_cls = "종료", "done"
+        rows += (f"<div class='rr'><span class='tpill {_tcls(t)}'>{_esc(t['label'])}</span>"
+                 f"<span class='rper'>{_dot(t['start_d'])} ~ {_dot(t['end_d'])}</span>"
+                 f"<span class='ral'>기본 {t['basic']}일 + 특별휴가 {t['special']}일</span>"
+                 f"<span class='rst {st_cls}'>{st_txt}</span>"
+                 f"<div class='rsub'>{_esc(who)} · {_esc(t['basis'])}({_dot(t['start_d'])})부터 "
+                 f"다음 개강일 {_dot(t['next_d'])} 전날까지 합산</div></div>")
+    warn = ""
+    if not any((not t["members"]) and t["start_d"] <= today < t["next_d"] for t in _TERMS):
+        warn = ("<div class='rwarn'>⚠️ 오늘 날짜가 들어가는 기본 기간이 없어요. "
+                "코드 위쪽 VAC_TERMS 에 새 학기 기간을 추가해 주세요.</div>")
+    foot = ("<div class='rfoot'>휴가 <b>사용일</b>이 각자의 기간 안에 있는 기록만 합산합니다 "
+            "(개강일 당일 포함 ~ 다음 개강일 전날). <b>기본 휴가</b>는 연차 1일·반차 0.5일, "
+            "<b>특별휴가</b>는 1일(특별 반차 0.5일)씩 각자의 한도에서 차감하고, "
+            "<b>병가</b>는 차감 없이 건수만 셉니다. 시트에 미리 적어 둔 예정 휴가도 포함돼요.</div>")
+    return f"<div class='vrule'><h4>🗓️ 휴가 카운팅 기준 (개강일 기준)</h4>{rows}{warn}{foot}</div>"
+
+
+# ── 달력 ──
 def render_vac_calendar(year, month, entries):
     by_day = {}
     for e in entries:
@@ -1084,81 +1263,156 @@ def render_vac_calendar(year, month, entries):
     return f"<table class='cal'><thead>{head}</thead><tbody>{body}</tbody></table>"
 
 
-def render_vac_summary(entries, year, names):
-    """시트 '월별 요약'과 같은 표: 이름 × 월 (차감 일수 합), 합계, 병가·특별휴가(건)."""
-    ys = [e for e in entries if e["date"].year == year]
-    ms = {e["date"].month for e in ys}
-    today = _kst_today()
-    if year == today.year:
-        ms.add(today.month)
-    months = list(range(min(ms), max(ms) + 1)) if ms else list(range(1, 13))
+# ── 잔여 휴가 표 ──
+def _bar(used, cap):
+    pct = 0 if cap <= 0 else min(used / cap, 1) * 100
+    cls = "over" if used > cap else "warn" if (used > 0 and cap - used <= max(1, cap * 0.2)) else ""
+    return f"<div class='vbar'><i class='{cls}' style='width:{pct:.0f}%'></i></div>"
+
+
+def _left_td(left, cap):
+    if left < 0:
+        return f"<td class='rem over'>초과 {_num(-left)}</td>"
+    return f"<td class='rem{' low' if left <= max(1, cap * 0.2) else ''}'>{_num(left)}</td>"
+
+
+def render_vac_balance(names, cur, today):
+    head = ("<tr><th>이름</th><th>기준</th><th>카운팅 기간</th><th>기본 사용</th><th>기본 잔여</th>"
+            "<th>특별휴가 사용</th><th>특별 잔여</th><th>병가</th></tr>")
+    body = ""
+    for n in names:
+        if n not in cur:
+            continue
+        t, u = cur[n]
+        body += (f"<tr><td class='nm'>{_esc(n)}<span class='grp'>{_esc(group_of(_short(n)))}</span></td>"
+                 f"<td><span class='tpill {_tcls(t)}'>{_esc(t['label'])}</span></td>"
+                 f"<td class='per'>{t['start_d']:%y.%m.%d} ~ {t['end_d']:%y.%m.%d}</td>"
+                 f"<td class='use'>{_num(u['basic'])}<span class='cap'> / {t['basic']}</span>"
+                 f"{_bar(u['basic'], t['basic'])}</td>{_left_td(u['basic_left'], t['basic'])}"
+                 f"<td class='use'>{_num(u['special'])}<span class='cap'> / {t['special']}</span>"
+                 f"{_bar(u['special'], t['special'])}</td>{_left_td(u['special_left'], t['special'])}"
+                 f"<td class='{'sk' if u['sick'] else 'z'}'>{u['sick'] or '–'}</td></tr>")
+    return (f"<div class='vscroll'><table class='vsum'><thead>{head}</thead><tbody>{body}</tbody></table></div>"
+            f"<div class='vnote'>각자 오늘({_dot(today)}) 적용 중인 기간 기준 · 예정 휴가 포함 · "
+            "막대가 주황이면 잔여 20% 이하, 빨강이면 한도 초과예요.</div>")
+
+
+# ── 월별 요약 (기간 기준) ──
+def _months(a, b):
+    out, y, m = [], a.year, a.month
+    while (y, m) <= (b.year, b.month):
+        out.append((y, m))
+        y, m = (y, m + 1) if m < 12 else (y + 1, 1)
+    return out
+
+
+def render_vac_summary(entries, base, names):
+    """기본 기간(base)과, 그 기간과 겹치는 명단 기간(신입생 등)을 한 표에. 셀 = 기본 휴가 차감 일수."""
+    overlaps = [t for t in _TERMS if t["members"]
+                and t["start_d"] < base["next_d"] and base["start_d"] < t["next_d"]]
+    spans = [base] + overlaps
+    months = _months(min(t["start_d"] for t in spans), max(t["end_d"] for t in spans))
+    years = []
+    for y, _ in months:
+        if years and years[-1][0] == y:
+            years[-1][1] += 1
+        else:
+            years.append([y, 1])
 
     def cls(v):
         return "z" if v == 0 else "v1" if v < 2 else "v2" if v < 4 else "v3"
 
-    head = ("<tr><th>이름</th>" + "".join(f"<th>{m}월</th>" for m in months)
-            + "<th>합계</th><th>병가·특별휴가</th></tr>")
+    head = ("<tr><th rowspan='2'>이름</th><th rowspan='2'>기준</th>"
+            + "".join(f"<th colspan='{c}'>{y}</th>" for y, c in years)
+            + "<th rowspan='2'>기본 합계</th><th rowspan='2'>특별휴가</th><th rowspan='2'>병가</th></tr><tr>"
+            + "".join(f"<th>{m}월</th>" for _, m in months) + "</tr>")
     body = ""
     col_tot = [0.0] * len(months)
-    all_tot, all_sick = 0.0, 0
+    all_b = all_s = 0.0
+    all_k = 0
     for n in names:
-        mine = [e for e in ys if e["name"] == n]
-        per = [sum(e["days"] for e in mine if e["date"].month == m) for m in months]
-        tot = sum(per)
-        sick = sum(1 for e in mine if e["kind"] in ("sick", "special"))
-        col_tot = [a + b for a, b in zip(col_tot, per)]
-        all_tot += tot
-        all_sick += sick
-        grp = group_of(_short(n))
-        cells = "".join(f"<td class='{cls(v)}'>{_num(v) if v else '–'}</td>" for v in per)
-        body += (f"<tr><td class='nm'>{_esc(n)}<span class='grp'>{_esc(grp)}</span></td>{cells}"
-                 f"<td class='tot'>{_num(tot)}</td>"
-                 f"<td class='{'sk' if sick else 'z'}'>{sick if sick else '–'}</td></tr>")
-    foot = ("<tr><td class='nm'>합계</td>" + "".join(f"<td>{_num(v)}</td>" for v in col_tot)
-            + f"<td>{_num(all_tot)}</td><td>{all_sick}</td></tr>")
+        own = [t for t in overlaps if n in t["members"]]
+        t = own[0] if own else base
+        u = vac_usage(entries, n, t)
+        cells = ""
+        for i, (y, m) in enumerate(months):
+            first, last = datetime.date(y, m, 1), datetime.date(y, m, _cal.monthrange(y, m)[1])
+            if last < t["start_d"] or first > t["end_d"]:
+                cells += "<td class='out'></td>"
+                continue
+            v = sum(e["days"] for e in u["entries"]
+                    if e["kind"] not in ("sick", "special") and (e["date"].year, e["date"].month) == (y, m))
+            col_tot[i] += v
+            cells += f"<td class='{cls(v)}'>{_num(v) if v else '–'}</td>"
+        all_b, all_s, all_k = all_b + u["basic"], all_s + u["special"], all_k + u["sick"]
+        body += (f"<tr><td class='nm'>{_esc(n)}<span class='grp'>{_esc(group_of(_short(n)))}</span></td>"
+                 f"<td><span class='tpill {_tcls(t)}'>{_esc(t['label'])}</span></td>{cells}"
+                 f"<td class='tot'>{_num(u['basic'])}<span class='cap'> / {t['basic']}</span></td>"
+                 f"<td class='tot'>{_num(u['special'])}<span class='cap'> / {t['special']}</span></td>"
+                 f"<td class='{'sk' if u['sick'] else 'z'}'>{u['sick'] or '–'}</td></tr>")
+    foot = ("<tr><td class='nm'>합계</td><td></td>" + "".join(f"<td>{_num(v)}</td>" for v in col_tot)
+            + f"<td>{_num(all_b)}</td><td>{_num(all_s)}</td><td>{all_k}</td></tr>")
     return (f"<div class='vscroll'><table class='vsum'><thead>{head}</thead>"
             f"<tbody>{body}</tbody><tfoot>{foot}</tfoot></table></div>"
-            "<div class='vnote'>숫자는 차감 일수(연차 1 · 반차 0.5). 병가·특별휴가는 차감 없이 건수만 셉니다.</div>")
+            "<div class='vnote'>월 칸은 기본 휴가 차감 일수(연차 1 · 반차 0.5). 빗금 칸은 그 사람의 카운팅 기간 밖이에요. "
+            "특별휴가는 일수, 병가는 건수(차감 없음).</div>")
 
 
-def render_vac_person(entries, name, year):
-    mine = sorted((e for e in entries if e["name"] == name and e["date"].year == year),
-                  key=lambda e: e["date"])
-    if not mine:
-        return f"<div class='vempty'>{_esc(name)} 님의 {year}년 휴가 기록이 없어요.</div>"
-    cnt = {k: sum(1 for e in mine if e["kind"] == k) for k in VAC_KINDS}
-    used = sum(e["days"] for e in mine)
-    stats = [f"<span>차감 합계 <b>{_num(used)}일</b></span>",
+# ── 개인별 ──
+def render_vac_person(entries, name, t):
+    u = vac_usage(entries, name, t)
+    es = u["entries"]
+
+    def left(v):
+        return f"<b class='over'>초과 {_num(-v)}일</b>" if v < 0 else f"<b>{_num(v)}일</b>"
+
+    period = (f"<div class='vperiod'><span class='tpill {_tcls(t)}'>{_esc(t['label'])}</span>"
+              f"<span>{_dot(t['start_d'])} ~ {_dot(t['end_d'])}</span>"
+              f"<span class='rsub'>{_esc(t['basis'])} 기준 · 다음 개강일 {_dot(t['next_d'])} 전날까지</span></div>")
+    cnt = {k: sum(1 for e in es if e["kind"] == k) for k in VAC_KINDS}
+    stats = [f"<span class='hl'>기본 {_num(u['basic'])} / {t['basic']}일 · 잔여 {left(u['basic_left'])}</span>",
+             f"<span class='hl'>특별휴가 {_num(u['special'])} / {t['special']}일 · 잔여 {left(u['special_left'])}</span>",
              f"<span>연차 <b>{cnt['annual']}</b>회</span>",
              f"<span>반차 <b>{cnt['half']}</b>회</span>",
-             f"<span>병가 <b>{cnt['sick']}</b>회</span>",
-             f"<span>특별휴가 <b>{cnt['special']}</b>회</span>"]
+             f"<span>병가 <b>{cnt['sick']}</b>회</span>"]
     if cnt["other"]:
         stats.append(f"<span>기타 <b>{cnt['other']}</b>회</span>")
+    head = f"{period}<div class='vstat'>{''.join(stats)}</div>"
+    if not es:
+        return head + f"<div class='vempty'>{_esc(name)} 님의 이 기간 휴가 기록이 없어요.</div>"
     today = _kst_today()
     rows = ""
-    for e in mine:
+    for e in es:
         d = e["date"]
         when = f"{d.month:02d}/{d.day:02d} ({_WD[d.weekday()]})"
         if d > today:
             when += " 예정"
-        dy = f"{_num(e['days'])}일" if e["days"] else "차감 없음"
+        if e["kind"] == "special":
+            dy = f"특별 {_num(e['sdays'])}일"
+        elif e["kind"] == "sick" or not e["days"]:
+            dy = "차감 없음"
+        else:
+            dy = f"{_num(e['days'])}일"
         rows += (f"<div class='vrow'><span class='vd'>{when}</span>"
                  f"<span class='vt'><span class='clg' style='{_vac_chip_style(e)}'>{_esc(_vac_label(e))}</span></span>"
                  f"<span class='vdy'>{dy}</span><span class='vx'>{_esc(e['note'])}</span></div>")
-    return (f"<div class='vstat'>{''.join(stats)}</div>"
-            f"<div class='guidebox'>{rows}</div>")
+    return head + f"<div class='guidebox'>{rows}</div>"
 
 
 def render_vacation_section():
-    st.markdown("""
+    today = _kst_today()
+    live = sorted([t for t in _TERMS if t["next_d"] > today] or _TERMS, key=lambda t: bool(t["members"]))
+    head_sub = " / ".join(dict.fromkeys(
+        f"{_esc(t['label'])} 기본 {t['basic']}일 + 특별휴가 {t['special']}일" for t in live))
+    st.markdown(f"""
 <div class="section" id="vacation" style="padding:64px 0 8px;">
   <div class="section-head">
     <h2>휴가 사용 현황</h2>
-    <p>기본 10일+특별휴가 5일/신입생 기본 5일+특별휴가 3일/학기 시작일 기준</p>
+    <p>{head_sub} · 개강일 기준으로 기간별 카운팅</p>
   </div>
 </div>
 """, unsafe_allow_html=True)
+    st.markdown(render_vac_rules(today), unsafe_allow_html=True)
 
     link = VAC_SHEET_LINK.strip()
     if not link:
@@ -1178,7 +1432,6 @@ def render_vacation_section():
 
     sid, _ = _sheet_parts(link)
     sheet_url = f"https://docs.google.com/spreadsheets/d/{sid}/edit"
-    today = _kst_today()
     last = max((e["date"] for e in entries), default=None)
 
     # ── 연동 바 ──
@@ -1194,14 +1447,21 @@ def render_vacation_section():
         st.button("🔄 새로고침", key="refresh_vac", on_click=st.cache_data.clear,
                   use_container_width=True)
 
+    names = VAC_ROSTER + sorted({e["name"] for e in entries} - set(VAC_ROSTER))
+    cur = {}                                   # 이름 → (오늘 적용 기간, 사용량)
+    for n in names:
+        t = current_term(n, today)
+        if t is not None:
+            cur[n] = (t, vac_usage(entries, n, t))
+
     # ── 요약 카드 (한국 날짜 기준) ──
     todays = sorted((e for e in entries if e["date"] == today), key=lambda e: e["name"])
     mon = today - datetime.timedelta(days=today.weekday())
     week = sorted((e for e in entries if mon <= e["date"] <= mon + datetime.timedelta(days=6)),
                   key=lambda e: (e["date"], e["name"]))
-    yr = [e for e in entries if e["date"].year == today.year]
-    yr_used = sum(e["days"] for e in yr)
-    yr_sick = sum(1 for e in yr if e["kind"] in ("sick", "special"))
+    tot_basic = sum(u["basic"] for _, u in cur.values())
+    tot_special = sum(u["special"] for _, u in cur.values())
+    tot_sick = sum(u["sick"] for _, u in cur.values())
     today_sub = (", ".join(f"{_short(e['name'])} {_vac_label(e)}" for e in todays)
                  if todays else "휴가자 없음")
     week_bits = [f"{_short(e['name'])} {e['date'].month}/{e['date'].day}" for e in week]
@@ -1213,17 +1473,14 @@ def render_vacation_section():
     <p class="sub">{_esc(today_sub)}</p></div>
   <div class="ocard"><p class="lab">이번 주 휴가</p><div class="val">{len(week)}건</div>
     <p class="sub">{_esc(week_sub)}</p></div>
-  <div class="ocard"><p class="lab">{today.year}년 연차 사용</p><div class="val">{_num(yr_used)}일</div>
-    <p class="sub">랩 전체 차감 일수 합계</p></div>
-  <div class="ocard"><p class="lab">{today.year}년 병가·특별휴가</p><div class="val">{yr_sick}건</div>
-    <p class="sub">연차에서 차감되지 않음</p></div>
+  <div class="ocard"><p class="lab">기본 휴가 사용</p><div class="val">{_num(tot_basic)}일</div>
+    <p class="sub">각자 카운팅 기간 기준 랩 전체 합</p></div>
+  <div class="ocard"><p class="lab">특별휴가 사용</p><div class="val">{_num(tot_special)}일</div>
+    <p class="sub">병가 {tot_sick}건은 차감 없음</p></div>
 </div>
 """, unsafe_allow_html=True)
 
-    names = VAC_ROSTER + sorted({e["name"] for e in entries} - set(VAC_ROSTER))
-    years = sorted({e["date"].year for e in entries} | {today.year}, reverse=True)
-
-    vt = st.tabs(["📅 휴가 달력", "📊 월별 요약", "🔎 개인별 내역"])
+    vt = st.tabs(["📅 휴가 달력", "🧮 잔여 휴가", "📊 월별 요약", "🔎 개인별 내역"])
 
     # ── 달력 ──
     with vt[0]:
@@ -1238,7 +1495,7 @@ def render_vacation_section():
             m_days = sum(e["days"] for e in entries if (e["date"].year, e["date"].month) == (VY, VM))
             st.markdown(f"<div class='monthlabel'>{VY}년 {VM}월</div>"
                         f"<div class='ind-note' style='text-align:center;margin:2px 0 0;'>"
-                        f"이 달 차감 합계 {_num(m_days)}일</div>", unsafe_allow_html=True)
+                        f"이 달 기본 휴가 차감 합계 {_num(m_days)}일</div>", unsafe_allow_html=True)
         with n3:
             st.button("다음 달 ▶", key="vac_next", on_click=_change_vac_month, args=(1,),
                       use_container_width=True)
@@ -1246,25 +1503,53 @@ def render_vacation_section():
                     unsafe_allow_html=True)
         st.markdown(vac_legend(), unsafe_allow_html=True)
 
-    # ── 월별 요약 ──
+    # ── 잔여 휴가 ──
     with vt[1]:
-        s1, s2, _ = st.columns([1, 1, 2])
-        with s1:
-            sy = st.selectbox("연도", years, key="vac_sum_year")
-        with s2:
-            sg = st.selectbox("조", ["전체"] + list(GROUPS.keys()), key="vac_sum_grp")
-        shown = names if sg == "전체" else [n for n in names if group_of(_short(n)) == sg]
-        st.markdown(render_vac_summary(entries, sy, shown), unsafe_allow_html=True)
+        b1, _ = st.columns([1, 3])
+        with b1:
+            bg = st.selectbox("조", ["전체"] + list(GROUPS.keys()), key="vac_bal_grp")
+        shown = names if bg == "전체" else [n for n in names if group_of(_short(n)) == bg]
+        st.markdown(render_vac_balance(shown, cur, today), unsafe_allow_html=True)
+
+    # ── 월별 요약 ──
+    with vt[2]:
+        bases = sorted((t for t in _TERMS if not t["members"]), key=lambda t: t["start_d"], reverse=True)
+        if not bases:
+            st.info("VAC_TERMS 에 members 가 None 인 기본 기간을 하나 이상 넣어 주세요.")
+        else:
+            now_base = term_on("", today)
+            idx = next((i for i, t in enumerate(bases) if now_base and t["key"] == now_base["key"]), 0)
+            s1, s2, _ = st.columns([1.6, 1, 1.4])
+            with s1:
+                sk = st.selectbox("기간", [t["key"] for t in bases], index=idx, key="vac_sum_term",
+                                  format_func=lambda k: f"{_dot(_TERM_BY_KEY[k]['start_d'])} ~ "
+                                                        f"{_dot(_TERM_BY_KEY[k]['end_d'])}")
+            with s2:
+                sg = st.selectbox("조", ["전체"] + list(GROUPS.keys()), key="vac_sum_grp")
+            shown = names if sg == "전체" else [n for n in names if group_of(_short(n)) == sg]
+            st.markdown(render_vac_summary(entries, _TERM_BY_KEY[sk], shown), unsafe_allow_html=True)
 
     # ── 개인별 ──
-    with vt[2]:
-        p1, p2, _ = st.columns([1.4, 1, 1.6])
+    with vt[3]:
+        p1, p2, _ = st.columns([1.4, 1.8, 0.8])
         with p1:
             who = st.selectbox("구성원", names, key="vac_person",
                                format_func=lambda n: f"{n}  ·  {group_of(_short(n)) or '-'}")
-        with p2:
-            py = st.selectbox("연도", years, key="vac_person_year")
-        st.markdown(render_vac_person(entries, who, py), unsafe_allow_html=True)
+        opts = person_terms(entries, who)
+        if not opts:
+            st.info("이 구성원에게 적용되는 기간이 없어요. VAC_TERMS 를 확인해 주세요.")
+        else:
+            ct = cur.get(who, (None, None))[0]
+            idx = next((i for i, t in enumerate(opts) if ct and t["key"] == ct["key"]), 0)
+            with p2:
+                pk = st.selectbox("카운팅 기간", [t["key"] for t in opts], index=idx,
+                                  key=f"vac_person_term_{who}",
+                                  format_func=lambda k: f"{_TERM_BY_KEY[k]['label']} · "
+                                                        f"{_dot(_TERM_BY_KEY[k]['start_d'])} ~ "
+                                                        f"{_dot(_TERM_BY_KEY[k]['end_d'])}")
+            st.markdown(render_vac_person(entries, who, _TERM_BY_KEY[pk]), unsafe_allow_html=True)
+
+
 
 # ══════════════════════════════════════════════════
 #  상단 (내비 + 히어로)
