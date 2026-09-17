@@ -977,8 +977,8 @@ def _vac_days(vtype, raw):
 
 
 def _vac_sdays(vtype, kind):
-    """특별휴가 한도에서 빠지는 일수 (특별휴가 1일, 유형에 '반차'가 있으면 0.5일)."""
-    if kind != "special":
+    """특별휴가 한도에서 빠지는 일수. 특별휴가·병가 모두 1일, 유형에 '반차'가 있으면 0.5일."""
+    if kind not in ("special", "sick"):
         return 0.0
     return 0.5 if "반차" in (vtype or "").replace(" ", "") else 1.0
 
@@ -1060,7 +1060,7 @@ def vac_usage(entries, name, t):
     basic = sum(e["days"] for e in es if e["kind"] not in ("sick", "special"))
     special = sum(e["sdays"] for e in es)
     return {"entries": es, "basic": basic, "special": special,
-            "sick": sum(1 for e in es if e["kind"] == "sick"),
+            "sick": sum(e["sdays"] for e in es if e["kind"] == "sick"),     # 그중 병가 일수
             "basic_left": t["basic"] - basic, "special_left": t["special"] - special}
 
 
@@ -1218,7 +1218,7 @@ def render_vac_rules(today):
             st_txt, st_cls = "종료", "done"
         rows += (f"<div class='rr'><span class='tpill {_tcls(t)}'>{_esc(t['label'])}</span>"
                  f"<span class='rper'>{_dot(t['start_d'])} ~ {_dot(t['end_d'])}</span>"
-                 f"<span class='ral'>기본 {t['basic']}일 + 특별휴가 {t['special']}일</span>"
+                 f"<span class='ral'>기본 {t['basic']}일 + 특별휴가 {t['special']}일(병가 포함)</span>"
                  f"<span class='rst {st_cls}'>{st_txt}</span>"
                  f"<div class='rsub'>{_esc(who)} · {_esc(t['basis'])}({_dot(t['start_d'])})부터 "
                  f"다음 개강일 {_dot(t['next_d'])} 전날까지 합산</div></div>")
@@ -1228,8 +1228,8 @@ def render_vac_rules(today):
                 "코드 위쪽 VAC_TERMS 에 새 학기 기간을 추가해 주세요.</div>")
     foot = ("<div class='rfoot'>휴가 <b>사용일</b>이 각자의 기간 안에 있는 기록만 합산합니다 "
             "(개강일 당일 포함 ~ 다음 개강일 전날). <b>기본 휴가</b>는 연차 1일·반차 0.5일, "
-            "<b>특별휴가</b>는 1일(특별 반차 0.5일)씩 각자의 한도에서 차감하고, "
-            "<b>병가</b>는 차감 없이 건수만 셉니다. 시트에 미리 적어 둔 예정 휴가도 포함돼요.</div>")
+            "<b>특별휴가와 병가</b>는 둘 다 특별휴가 한도에서 1일(반차 0.5일)씩 차감합니다. "
+            "시트에 미리 적어 둔 예정 휴가도 포함돼요.</div>")
     return f"<div class='vrule'><h4>🗓️ 휴가 카운팅 기준 (개강일 기준)</h4>{rows}{warn}{foot}</div>"
 
 
@@ -1278,7 +1278,7 @@ def _left_td(left, cap):
 
 def render_vac_balance(names, cur, today):
     head = ("<tr><th>이름</th><th>기준</th><th>카운팅 기간</th><th>기본 사용</th><th>기본 잔여</th>"
-            "<th>특별휴가 사용</th><th>특별 잔여</th><th>병가</th></tr>")
+            "<th>특별휴가 사용<br>(병가 포함)</th><th>특별 잔여</th><th>그중 병가</th></tr>")
     body = ""
     for n in names:
         if n not in cur:
@@ -1291,7 +1291,7 @@ def render_vac_balance(names, cur, today):
                  f"{_bar(u['basic'], t['basic'])}</td>{_left_td(u['basic_left'], t['basic'])}"
                  f"<td class='use'>{_num(u['special'])}<span class='cap'> / {t['special']}</span>"
                  f"{_bar(u['special'], t['special'])}</td>{_left_td(u['special_left'], t['special'])}"
-                 f"<td class='{'sk' if u['sick'] else 'z'}'>{u['sick'] or '–'}</td></tr>")
+                 f"<td class='{'sk' if u['sick'] else 'z'}'>{_num(u['sick']) if u['sick'] else '–'}</td></tr>")
     return (f"<div class='vscroll'><table class='vsum'><thead>{head}</thead><tbody>{body}</tbody></table></div>"
             f"<div class='vnote'>각자 오늘({_dot(today)}) 적용 중인 기간 기준 · 예정 휴가 포함 · "
             "막대가 주황이면 잔여 20% 이하, 빨강이면 한도 초과예요.</div>")
@@ -1324,12 +1324,12 @@ def render_vac_summary(entries, base, names):
 
     head = ("<tr><th rowspan='2'>이름</th><th rowspan='2'>기준</th>"
             + "".join(f"<th colspan='{c}'>{y}</th>" for y, c in years)
-            + "<th rowspan='2'>기본 합계</th><th rowspan='2'>특별휴가</th><th rowspan='2'>병가</th></tr><tr>"
+            + "<th rowspan='2'>기본 합계</th><th rowspan='2'>특별휴가<br>(병가 포함)</th><th rowspan='2'>그중 병가</th></tr><tr>"
             + "".join(f"<th>{m}월</th>" for _, m in months) + "</tr>")
     body = ""
     col_tot = [0.0] * len(months)
     all_b = all_s = 0.0
-    all_k = 0
+    all_k = 0.0
     for n in names:
         own = [t for t in overlaps if n in t["members"]]
         t = own[0] if own else base
@@ -1349,13 +1349,13 @@ def render_vac_summary(entries, base, names):
                  f"<td><span class='tpill {_tcls(t)}'>{_esc(t['label'])}</span></td>{cells}"
                  f"<td class='tot'>{_num(u['basic'])}<span class='cap'> / {t['basic']}</span></td>"
                  f"<td class='tot'>{_num(u['special'])}<span class='cap'> / {t['special']}</span></td>"
-                 f"<td class='{'sk' if u['sick'] else 'z'}'>{u['sick'] or '–'}</td></tr>")
+                 f"<td class='{'sk' if u['sick'] else 'z'}'>{_num(u['sick']) if u['sick'] else '–'}</td></tr>")
     foot = ("<tr><td class='nm'>합계</td><td></td>" + "".join(f"<td>{_num(v)}</td>" for v in col_tot)
-            + f"<td>{_num(all_b)}</td><td>{_num(all_s)}</td><td>{all_k}</td></tr>")
+            + f"<td>{_num(all_b)}</td><td>{_num(all_s)}</td><td>{_num(all_k)}</td></tr>")
     return (f"<div class='vscroll'><table class='vsum'><thead>{head}</thead>"
             f"<tbody>{body}</tbody><tfoot>{foot}</tfoot></table></div>"
             "<div class='vnote'>월 칸은 기본 휴가 차감 일수(연차 1 · 반차 0.5). 빗금 칸은 그 사람의 카운팅 기간 밖이에요. "
-            "특별휴가는 일수, 병가는 건수(차감 없음).</div>")
+            "특별휴가 칸은 병가를 포함한 일수예요.</div>")
 
 
 # ── 개인별 ──
@@ -1371,7 +1371,7 @@ def render_vac_person(entries, name, t):
               f"<span class='rsub'>{_esc(t['basis'])} 기준 · 다음 개강일 {_dot(t['next_d'])} 전날까지</span></div>")
     cnt = {k: sum(1 for e in es if e["kind"] == k) for k in VAC_KINDS}
     stats = [f"<span class='hl'>기본 {_num(u['basic'])} / {t['basic']}일 · 잔여 {left(u['basic_left'])}</span>",
-             f"<span class='hl'>특별휴가 {_num(u['special'])} / {t['special']}일 · 잔여 {left(u['special_left'])}</span>",
+             f"<span class='hl'>특별휴가(병가 포함) {_num(u['special'])} / {t['special']}일 · 잔여 {left(u['special_left'])}</span>",
              f"<span>연차 <b>{cnt['annual']}</b>회</span>",
              f"<span>반차 <b>{cnt['half']}</b>회</span>",
              f"<span>병가 <b>{cnt['sick']}</b>회</span>"]
@@ -1387,9 +1387,9 @@ def render_vac_person(entries, name, t):
         when = f"{d.month:02d}/{d.day:02d} ({_WD[d.weekday()]})"
         if d > today:
             when += " 예정"
-        if e["kind"] == "special":
+        if e["kind"] in ("special", "sick"):
             dy = f"특별 {_num(e['sdays'])}일"
-        elif e["kind"] == "sick" or not e["days"]:
+        elif not e["days"]:
             dy = "차감 없음"
         else:
             dy = f"{_num(e['days'])}일"
@@ -1403,7 +1403,7 @@ def render_vacation_section():
     today = _kst_today()
     live = sorted([t for t in _TERMS if t["next_d"] > today] or _TERMS, key=lambda t: bool(t["members"]))
     head_sub = " / ".join(dict.fromkeys(
-        f"{_esc(t['label'])} 기본 {t['basic']}일 + 특별휴가 {t['special']}일" for t in live))
+        f"{_esc(t['label'])} 기본 {t['basic']}일 + 특별휴가 {t['special']}일(병가 포함)" for t in live))
     st.markdown(f"""
 <div class="section" id="vacation" style="padding:64px 0 8px;">
   <div class="section-head">
@@ -1475,8 +1475,8 @@ def render_vacation_section():
     <p class="sub">{_esc(week_sub)}</p></div>
   <div class="ocard"><p class="lab">기본 휴가 사용</p><div class="val">{_num(tot_basic)}일</div>
     <p class="sub">각자 카운팅 기간 기준 랩 전체 합</p></div>
-  <div class="ocard"><p class="lab">특별휴가 사용</p><div class="val">{_num(tot_special)}일</div>
-    <p class="sub">병가 {tot_sick}건은 차감 없음</p></div>
+  <div class="ocard"><p class="lab">특별휴가 사용 (병가 포함)</p><div class="val">{_num(tot_special)}일</div>
+    <p class="sub">그중 병가 {_num(tot_sick)}일</p></div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1548,8 +1548,7 @@ def render_vacation_section():
                                                         f"{_dot(_TERM_BY_KEY[k]['start_d'])} ~ "
                                                         f"{_dot(_TERM_BY_KEY[k]['end_d'])}")
             st.markdown(render_vac_person(entries, who, _TERM_BY_KEY[pk]), unsafe_allow_html=True)
-
-
+            
 
 # ══════════════════════════════════════════════════
 #  상단 (내비 + 히어로)
