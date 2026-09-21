@@ -498,28 +498,37 @@ members_html = "".join(
     f'<p class="m-detail">{m["detail"]}</p></div>' for m in MEMBERS)
 
 # ══════════════════════════════════════════════════
+#  📦 주문 데이터 & 헬퍼 (구글 시트 여러 개 · 읽기 전용)
 # ══════════════════════════════════════════════════
-#  📦 주문 데이터 & 헬퍼 (구글 시트 읽기 전용)
-# ══════════════════════════════════════════════════
-# 주문 현황은 전부 구글 시트(Park Group…, 시약 탭)에서만 읽어요. 시트는 절대 수정하지 않습니다.
+# 주문 현황은 전부 구글 시트에서만 읽어요. 시트는 절대 수정하지 않습니다.
 #   → 앱 안에 저장하는 데이터가 없으니 sleep·재시작이 돼도 날아가는 게 없어요.
 #     기록·수정은 전부 시트에서 하고, 앱에서는 🔄 새로고침만 누르면 됩니다.
+#
+# ▸ 주문 시트는 여러 개를 동시에 연결할 수 있어요. ORDER_SHEETS 에 한 줄씩 추가하세요.
+#     label : 이 시트 주문의 기본 분류 (시트에 '분류' 열이 있으면 그 칸 값이 우선)
+#     link  : 시트 [공유] → '링크 복사' 주소 그대로. gid 가 없으면 첫 번째 탭을 읽어요.
+#   공유는 '링크가 있는 모든 사용자: 뷰어' (또는 서비스 계정 이메일에 시트 공유).
+#   ⚠️ 드라이브에 올린 .xlsx 파일 그대로는 못 읽어요 → [파일] → 'Google 스프레드시트로 저장' 후 새 링크 사용.
+#   한 시트를 못 읽어도 나머지 시트 주문은 계속 보입니다.
+ORDER_SHEETS = [
+    {"label": "시약",
+     "link": "https://docs.google.com/spreadsheets/d/18b88VxnCWBw-mYZBu292q1MSGbbIrf1XDRI_8lu3JyU/edit#gid=2103689234"},
+    {"label": "소모품",   # ↓ 'Google 스프레드시트로 저장' 해서 새로 생긴 시트의 링크로 바꿔 주세요
+     "link": "https://docs.google.com/spreadsheets/d/1GraZngi8Gi-nlaV8c-Z7B2UvOFfu5RmJ/edit?gid=401306166#gid=401306166"},
+]
 #
 # 6단계는 시트의 열을 보고 자동 판별합니다. (체크된 칸 중 가장 뒤 단계 = 현재 단계)
 #   1 주문 요청          : Date 가 적힌 행
 #   2 교수 확인          : 'Prof. Check' 열 체크
 #   3 주문 완료          : 'Ordered date' 열에 값이 있으면
 #   4 입고 완료          : '왔나요' 열 체크
-#   5 검수              : '검수' 열 체크     ← 시트 머리글 행에 새로 추가
-#   6 견적서·검수 마무리  : '마무리' 열 체크   ← 시트 머리글 행에 새로 추가
+#   5 검수              : '검수' 열 체크
+#   6 견적서·검수 마무리  : '마무리' 열 체크
 #   '체크'로 보는 값: O(로 시작) · ㅇ · 체크박스(TRUE) · ✓ · 완료 · 날짜.   X · FALSE · 빈칸은 미체크.
 #
-# ▸ 시트 읽는 방법은 자동 선택: secrets 에 서비스 계정([gcp_service_account])이 있으면
-#   gspread(비공개 시트)로, 없으면 공개 CSV 링크로 읽습니다.
-SHEET_ID = "18b88VxnCWBw-mYZBu292q1MSGbbIrf1XDRI_8lu3JyU"
-GID = "2103689234"          # 화면에 보여줄 탭(sheet)의 gid — 시트 URL의 gid= 뒤 숫자
-SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit#gid={GID}"
-CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID}"
+# ▸ 읽는 방법: secrets 에 서비스 계정([gcp_service_account])이 있으면 gspread 로 먼저 시도하고,
+#   안 되면 공개 CSV 링크로 읽어요.
+#   (링크 해석 _sheet_parts / CSV 읽기 _http_rows 는 아래 🌴 휴가 영역의 함수를 같이 씁니다)
 
 # 시트 열 이름 → 내부 필드. 열 순서가 바뀌어도 '이름'으로 찾고, 띄어쓰기·줄바꿈은 무시해요.
 # 리스트로 적은 건 그중 아무 이름이나 맞으면 됩니다. (시트에서 열 이름을 바꾸면 여기도 같이)
@@ -531,6 +540,7 @@ COLMAP = {
     "arrived": "왔나요",
     "inspect": ["검수", "검수 완료", "검수완료"],
     "closed": ["마무리", "견적서", "견적서 마무리", "견적서·검수 마무리", "마무리 완료"],
+    "category": ["분류", "Category"],      # 선택 열 — 없으면 ORDER_SHEETS 의 label 사용
 }
 
 STAGES = ["주문 요청", "교수 확인", "주문 완료", "입고 완료", "검수", "견적서·검수 마무리"]
@@ -597,30 +607,41 @@ def _find_col(hdr, names):
     return None
 
 
+def _order_sheet_url(link):
+    sid, gid = _sheet_parts(link)
+    return f"https://docs.google.com/spreadsheets/d/{sid}/edit" + (f"#gid={gid}" if gid else "")
+
+
 # ── 구글 시트 읽기 ──
 @st.cache_data(ttl=300, show_spinner=False)
-def _fetch_sheet_rows():
-    """구글 시트를 표(행들의 리스트)로 읽어옵니다.
-    (1) secrets 에 서비스 계정이 있으면 비공개 시트도 gspread 로,
-    (2) 없으면 공개 CSV 링크로 읽습니다."""
-    use_sa = False
+def _fetch_sheet_rows(link):
+    """시트 링크 → 표(행들의 리스트). 서비스 계정 → 공개 CSV 순서로 시도."""
+    sid, gid = _sheet_parts(link)
+    if not sid:
+        raise ValueError("링크에서 시트 ID를 찾지 못했어요. …/spreadsheets/d/<ID>/… 형태의 링크인지 확인해 주세요.")
+    errs = []
     try:
         use_sa = "gcp_service_account" in st.secrets
     except Exception:
         use_sa = False
     if use_sa:
-        import gspread
-        gc = gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
-        sh = gc.open_by_key(SHEET_ID)
-        ws = next((w for w in sh.worksheets() if str(w.id) == str(GID)), sh.sheet1)
-        return ws.get_all_values()
-    req = urllib.request.Request(CSV_URL, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=15, context=ssl.create_default_context()) as resp:
-        raw = resp.read().decode("utf-8")
-    return list(csv.reader(io.StringIO(raw)))
+        try:
+            import gspread
+            gc = gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
+            sh = gc.open_by_key(sid)
+            ws = next((w for w in sh.worksheets() if gid and str(w.id) == gid), sh.sheet1)
+            return ws.get_all_values()
+        except Exception as e:
+            errs.append(f"서비스 계정: {e}")
+    url = f"https://docs.google.com/spreadsheets/d/{sid}/export?format=csv" + (f"&gid={gid}" if gid else "")
+    try:
+        return _http_rows(url)
+    except Exception as e:
+        errs.append(str(e))
+    raise RuntimeError(" / ".join(errs))
 
 
-def parse_sheet_orders(rows):
+def parse_sheet_orders(rows, default_cat):
     """시트 행 → (주문 dict 목록, 시트에 없는 단계 열 이름 목록)."""
     hidx = next((i for i, r in enumerate(rows)
                  if _find_col(r, COLMAP["name"]) is not None
@@ -650,7 +671,7 @@ def parse_sheet_orders(rows):
                   _checked(cell(r, "inspect")), _checked(cell(r, "closed"))]
         stage = max((i + 1 for i, ok in enumerate(checks) if ok), default=0)
         extra = ""
-        if arrived_j is not None:   # '왔나요' 오른쪽 메모 칸들 (검수·마무리처럼 이름 있는 열은 제외)
+        if arrived_j is not None:   # '왔나요' 오른쪽 메모 칸들 (검수·마무리·분류처럼 이름 있는 열은 제외)
             extra = " · ".join(c.strip() for j, c in enumerate(r)
                                if j > arrived_j and j not in known and c.strip())
         note = " · ".join(x for x in [cell(r, "notes"), extra] if x)
@@ -663,6 +684,7 @@ def parse_sheet_orders(rows):
             "request_date": d.isoformat(),
             "ordered_date": cell(r, "ordered"),
             "stage": stage,
+            "category": cell(r, "category") or default_cat,
             "qty": f"{qty} × {units}" if (units and units not in ("1", "")) else qty,
             "cas": cell(r, "cas"),
             "prodno": cell(r, "prodno"),
@@ -672,12 +694,25 @@ def parse_sheet_orders(rows):
 
 
 def build_orders():
-    """반환: (주문 목록, 오류 메시지 또는 None, 시트에 없는 단계 열 이름 목록)."""
-    try:
-        orders, missing = parse_sheet_orders(_fetch_sheet_rows())
-    except Exception as e:
-        return [], str(e), []
-    return orders, None, missing
+    """ORDER_SHEETS 를 전부 읽어 합칩니다. 한 시트가 실패해도 나머지는 계속 보여요.
+    반환: (주문 목록, [(label, 오류)], {label: 없는 단계 열}, [(label, 시트 URL, 건수 또는 None)])"""
+    orders, errs, missing, info = [], [], {}, []
+    for s in ORDER_SHEETS:
+        label, link = s["label"], (s.get("link") or "").strip()
+        if not link:
+            continue
+        url = _order_sheet_url(link)
+        try:
+            got, miss = parse_sheet_orders(_fetch_sheet_rows(link), label)
+        except Exception as e:
+            errs.append((label, str(e)))
+            info.append((label, url, None))
+            continue
+        orders += got
+        if miss:
+            missing[label] = miss
+        info.append((label, url, len(got)))
+    return orders, errs, missing, info
 
 
 def _change_month(delta):
@@ -709,7 +744,8 @@ def stepper_html(stage):
 
 def order_card_html(o):
     amt = f"₩{o['amount']:,}" if o.get("amount") else "-"
-    bits = [f"요청자 {_esc(o['requester'])}", _esc(o["vendor"])]
+    bits = [f"<span class='catpill'>{_esc(o.get('category', ''))}</span>",
+            f"요청자 {_esc(o['requester'])}", _esc(o["vendor"])]
     if o.get("qty"):
         bits.append(_esc(o["qty"]))
     bits.append(f"<b>{amt}</b>")
@@ -759,7 +795,8 @@ def render_calendar(year, month, orders):
                 bg, fg = STAGE_COLORS[o["stage"]]
                 raw = o["item"]
                 nm = raw if len(raw) <= 8 else raw[:7] + "…"
-                chips += (f"<span class='chip' style='background:{bg};color:{fg}'>"
+                tip = f"[{o.get('category', '')}] {raw} · {STAGES[o['stage']]}"
+                chips += (f"<span class='chip' title='{_esc(tip)}' style='background:{bg};color:{fg}'>"
                           f"{_esc(nm)} · {o['stage'] + 1}/{len(STAGES)}</span>")
             body += f"<td class='{daycls}'><div class='daynum {numcls}'>{day}</div>{chips}</td>"
         body += "</tr>"
@@ -772,6 +809,7 @@ def cal_legend():
         bg, fg = STAGE_COLORS[i]
         items += f"<span class='clg' style='background:{bg};color:{fg}'>{i + 1}. {name}</span>"
     return f"<div class='legend'><span class='lbl'>진행 단계</span>{items}</div>"
+
 
 # ══════════════════════════════════════════════════
 #  🌴 휴가 데이터 & 헬퍼 (구글 시트 읽기 전용 — 설정은 코드 위쪽 VAC_SHEET_LINK / VAC_TERMS)
@@ -1473,42 +1511,44 @@ if "cal_year" not in st.session_state:
     st.session_state.cal_year = _t.year
     st.session_state.cal_month = _t.month
 
-orders, err, missing_cols = build_orders()
+orders, sheet_errs, missing_map, sheet_info = build_orders()
 
 st.markdown("""
 <div class="section" id="orders" style="padding:60px 0 8px;">
   <div class="section-head">
     <h2>물품 주문 현황</h2>
-    <p>요청 → 교수 확인 → 주문 → 입고 → 검수 → 견적서·검수 마무리, 전 단계를 구글 시트에서 그대로 가져와요. 수정은 시트에서 하고 🔄 새로고침을 눌러 주세요.</p>
+    <p>시약·소모품 시트에서 요청 → 교수 확인 → 주문 → 입고 → 검수 → 견적서·검수 마무리까지 그대로 가져와요. 수정은 시트에서 하고 🔄 새로고침을 눌러 주세요.</p>
   </div>
 </div>
 """, unsafe_allow_html=True)
 
-if err is not None:
+for _lab, _msg in sheet_errs:
     st.warning(
-        "구글 시트를 지금 불러오지 못했어요.\n\n"
-        f"• 원인: `{err}`\n\n"
-        "확인할 것: ① [공유] → ‘링크가 있는 모든 사용자: 뷰어’로 변경, "
-        "또는 ② 서비스 계정을 만들어 시트를 공유하고 secrets 의 [gcp_service_account] 에 키 등록 "
-        "(코드 상단 주석 참고)."
+        f"‘{_lab}’ 시트를 불러오지 못했어요. 다른 시트 주문은 그대로 표시돼요.\n\n"
+        f"• 원인: `{_msg}`\n\n"
+        "확인할 것: ① [공유] → ‘링크가 있는 모든 사용자: 뷰어’ (또는 서비스 계정 이메일에 공유) "
+        "② 드라이브에 올린 엑셀(.xlsx) 파일이면 [파일] → ‘Google 스프레드시트로 저장’ 후 "
+        "새로 생긴 시트 링크를 코드의 ORDER_SHEETS 에 넣기"
     )
-elif missing_cols:
+for _lab, _cols in missing_map.items():
     st.info(
-        "시트 머리글 행에 " + ", ".join(f"‘{c}’" for c in missing_cols) + " 열이 아직 없어요. "
+        f"‘{_lab}’ 시트 머리글 행에 " + ", ".join(f"‘{c}’" for c in _cols) + " 열이 아직 없어요. "
         "‘Your Name’과 같은 줄에 이 이름으로 열을 추가하고 O(또는 체크박스)로 표시하면 "
         "검수 · 견적서·검수 마무리 단계가 자동 반영돼요."
     )
 
 # ── 전체 누적 요약 (상단 바) ──
-_all_n = len(orders)
+_links = " &nbsp;·&nbsp; ".join(
+    f"<a href='{_u}' target='_blank'>{_esc(_lab)} 시트</a> "
+    + (f"<b>{_n}건</b>" if _n is not None else "<b style='color:#B45309'>불러오기 실패</b>")
+    for _lab, _u, _n in sheet_info)
 _all_amt = sum(o["amount"] for o in orders)
 _pending = sum(1 for o in orders if ARRIVED <= o["stage"] < LAST)   # 입고됐지만 마무리 전
 sb1, sb2 = st.columns([4, 1])
 with sb1:
     st.markdown(
-        f"<div class='syncbar'>🔗 <a href='{SHEET_URL}' target='_blank'>Park Group 주문 시트</a>"
-        f" 연동 &nbsp;·&nbsp; 누적 <b>{_all_n}건</b>"
-        f" &nbsp;·&nbsp; 총 <b>₩{_all_amt:,}</b>"
+        f"<div class='syncbar'>🔗 {_links}"
+        f"<br>누적 <b>{len(orders)}건</b> &nbsp;·&nbsp; 총 <b>₩{_all_amt:,}</b>"
         f" &nbsp;·&nbsp; 검수·마무리 대기 <b>{_pending}건</b></div>",
         unsafe_allow_html=True)
 with sb2:
@@ -1562,12 +1602,17 @@ with st.expander("🏪 기타 구매처 연락처", expanded=False):
 """, unsafe_allow_html=True)
 
 # ── 필터 ──
-fc1, _fc2 = st.columns(2)
+_cats = list(dict.fromkeys([s["label"] for s in ORDER_SHEETS] + [o["category"] for o in orders]))
+fc1, fc2 = st.columns(2)
 with fc1:
+    f_cat = st.selectbox("분류", ["전체"] + _cats, key="f_cat")
+with fc2:
     f_stat = st.selectbox("진행 상태", ["전체", "입고 전", "검수·마무리 대기", "마무리 완료"], key="f_stat")
 
 
 def _match(o):
+    if f_cat != "전체" and o["category"] != f_cat:
+        return False
     if f_stat == "입고 전":
         return o["stage"] < ARRIVED
     if f_stat == "검수·마무리 대기":
@@ -1623,11 +1668,11 @@ if not month_orders:
     st.info("이 달에는 표시할 주문이 없어요. 달을 이동하거나 진행 상태 필터를 바꿔 보세요.")
 else:
     st.markdown(
-        "<div class='ordhint' style='margin:0 0 8px;'>단계를 바꾸려면 시트에서 "
+        "<div class='ordhint' style='margin:0 0 8px;'>단계를 바꾸려면 해당 시트(시약/소모품)에서 "
         "<b>Prof. Check · Ordered date · 왔나요 · 검수 · 마무리</b> 열을 채우고 🔄 새로고침을 누르세요.</div>"
         + "".join(order_card_html(o) for o in month_orders),
         unsafe_allow_html=True)
-
+    
 # ══════════════════════════════════════════════════
 #  🌴 휴가 사용 현황 (구글 시트 읽기 전용)
 # ══════════════════════════════════════════════════
