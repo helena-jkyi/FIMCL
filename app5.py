@@ -521,7 +521,7 @@ ORDER_SHEETS = [
 #   1 주문 요청          : Date 가 적힌 행
 #   2 교수 확인          : 'Prof. Check' 열 체크
 #   3 주문 완료          : 'Ordered date' 열에 값이 있으면
-#   4 입고 완료          : '왔나요' 열 체크
+#   4 입고 완료          : '입고' 열 체크
 #   5 검수              : '검수' 열 체크
 #   6 견적서·검수 마무리  : '마무리' 열 체크
 #   '체크'로 보는 값: O(로 시작) · ㅇ · 체크박스(TRUE) · ✓ · 완료 · 날짜.   X · FALSE · 빈칸은 미체크.
@@ -537,7 +537,7 @@ COLMAP = {
     "units": "# of units", "total": "Total (₩)", "cas": "CAS #",
     "prodno": "제품번호", "desc": "Product description", "date": "Date",
     "prof": "Prof. Check", "notes": "Extra notes", "ordered": "Ordered date",
-    "arrived": "왔나요",
+    "arrived": "입고",
     "inspect": ["검수", "검수 완료", "검수완료"],
     "closed": ["마무리", "견적서", "견적서 마무리", "견적서·검수 마무리", "마무리 완료"],
     "category": ["분류", "Category"],      # 선택 열 — 없으면 ORDER_SHEETS 의 label 사용
@@ -671,7 +671,7 @@ def parse_sheet_orders(rows, default_cat):
                   _checked(cell(r, "inspect")), _checked(cell(r, "closed"))]
         stage = max((i + 1 for i, ok in enumerate(checks) if ok), default=0)
         extra = ""
-        if arrived_j is not None:   # '왔나요' 오른쪽 메모 칸들 (검수·마무리·분류처럼 이름 있는 열은 제외)
+        if arrived_j is not None:   # '입고' 오른쪽 메모 칸들 (검수·마무리·분류처럼 이름 있는 열은 제외)
             extra = " · ".join(c.strip() for j, c in enumerate(r)
                                if j > arrived_j and j not in known and c.strip())
         note = " · ".join(x for x in [cell(r, "notes"), extra] if x)
@@ -1669,7 +1669,7 @@ if not month_orders:
 else:
     st.markdown(
         "<div class='ordhint' style='margin:0 0 8px;'>단계를 바꾸려면 해당 시트(시약/소모품)에서 "
-        "<b>Prof. Check · Ordered date · 왔나요 · 검수 · 마무리</b> 열을 채우고 🔄 새로고침을 누르세요.</div>"
+        "<b>Prof. Check · Ordered date · 입고 · 검수 · 마무리</b> 열을 채우고 🔄 새로고침을 누르세요.</div>"
         + "".join(order_card_html(o) for o in month_orders),
         unsafe_allow_html=True)
     
