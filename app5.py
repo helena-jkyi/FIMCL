@@ -1478,13 +1478,337 @@ def render_vacation_section():
             
 
 # ══════════════════════════════════════════════════
+#  👥 Group job (학기별 담당 업무) — 구글 시트 읽기 전용
+# ══════════════════════════════════════════════════
+# ▸ 휴가·주문 시트처럼 아래 링크의 시트를 직접 읽어서 보여 줘요. 담당이 바뀌면 시트만 고치고
+#   앱에서 🔄 새로고침을 누르면 됩니다. (시트는 절대 수정하지 않아요)
+# ▸ 공유 설정은 '링크가 있는 모든 사용자: 뷰어' (또는 서비스 계정 이메일에 시트 공유).
+# ▸ 시트 구조는 지금 그대로 쓰면 돼요. 앱은 머리글 이름으로 열을 찾아요.
+#     '장비' 열 + 오른쪽 '담당(정)' '담당(부)'  /  '기술' 열 + 오른쪽 '담당'
+#     'OO년도 O학기' 열 + 오른쪽 '담당'          /  아래쪽 '외부 장비' 열 + 오른쪽 '담당'
+#   이름은 쉼표(,)나 슬래시(/)로 여러 명, 괄호는 비고로 읽어요.  예) 이재경 (high temp), 이건우(CVD)
+GJ_SHEET_LINK = ("https://docs.google.com/spreadsheets/d/19t6gFSAtuA2K7i9aM8UQSWRnsaEfDnrI/"
+                 "edit?gid=1050165664#gid=1050165664")
+
+# 시트를 못 읽을 때만 쓰는 예비 데이터 (2026년도 2학기 기준) — 형식: (항목, [정], [부], 비고)
+GJ_FALLBACK_TERM = "2026년도 2학기"
+GJ_FALLBACK = {
+    "roles": [
+        ("랩장", ["이재경"], [], ""),
+        ("안전관리 (자산) 담당", ["하승연", "박민서"], [], ""),
+        ("사무용품(중앙창고) 구매", ["박민서"], [], ""),
+        ("실험 소모품(중앙창고) 구매", ["김수린"], [], ""),
+        ("d solvent 주문", ["김다연"], [], ""),
+        ("삼전 시약 주문", ["김주현"], [], ""),
+        ("드라이아이스 주문", ["김다연"], [], ""),
+        ("Pipet callibration", ["조수용"], [], ""),
+        ("Gas 주문", ["하승연", "김강민", "이건우"], [], "이건우: CVD"),
+        ("홈페이지 관리", ["김수린"], [], ""),
+        ("NAS 관리", ["박성현"], [], ""),
+    ],
+    "equip": [
+        ("Centrifuge", ["조수용"], [], ""), ("UV-vis", ["박성현"], [], ""),
+        ("Optical microscope", ["박성현"], [], ""), ("Sonicator", ["김주현"], [], ""),
+        ("Desiccator", ["박성현"], [], ""), ("Milli-Q water (증류수)", ["박지원"], [], ""),
+        ("항온항습기", ["김문정"], [], ""), ("Tube furnace1", ["이재경"], [], "high temp"),
+        ("Tube furnace2", ["정유리"], [], "low temp"), ("Glove box-N2", ["문상원"], ["전재민"], ""),
+        ("Glove box-Ar", ["하승연"], ["김강민"], ""), ("BET", ["전재민"], ["이재경"], ""),
+        ("Potentiostat-Gamry", ["김강민"], [], ""), ("Potentiostat-BioLogic", ["김강민"], [], ""),
+        ("FT-IR", ["전재민"], [], ""), ("Li metal", ["하승연"], [], ""),
+        ("Rotary Evaporator", ["박성현"], [], ""), ("Oven", ["김주현"], [], ""),
+        ("Vacuum oven", ["조수용"], [], ""), ("Balance", ["박민서"], [], ""),
+        ("Box furnace", ["이재경"], [], ""), ("ICP-OES/Autosampler", ["박지원"], ["전재민"], ""),
+        ("Tip sonicator", ["이재경"], [], ""), ("Conductivity Measurement", ["김다연", "김수린"], [], ""),
+        ("PXRD", ["정유리"], ["김수린"], ""), ("Auto column", ["박경철"], [], ""),
+        ("Battery", ["김강민"], [], ""), ("Fluorometer", ["박민서"], [], ""),
+    ],
+    "tech": [
+        ("Frit funnel 사용법", ["박성현"], [], ""), ("Autoclave 사용법", ["하승연"], [], ""),
+        ("Column chromatography", ["전재민"], [], ""), ("Schlenk line 사용법", ["전재민"], [], ""),
+        ("Freeze-pump-thaw", ["박지원"], [], ""), ("Molecular sieves activation", ["문상원"], [], ""),
+        ("Flame dry", ["정유리"], [], ""), ("Battery Cell 조립", ["하승연", "김강민"], [], ""),
+        ("극판밀기", ["김강민", "이건우"], [], ""), ("Soxhlet", ["전재민"], [], ""),
+        ("Cannula transfer", ["박경철"], [], ""),
+    ],
+    "ext": [
+        ("XPS", ["박지원", "김다연"], [], "중앙분석센터"),
+        ("SEM", ["박성현", "김강민", "문상원"], [], "중앙분석센터 S8 SU8230"),
+        ("SEM", ["박성현", "김강민", "문상원"], [], "IBS"),
+        ("Raman", [], [], "화학과"), ("AFM", [], [], ""),
+        ("EPR", ["전재민", "하승연"], [], "화학과"), ("Cryo EM", ["정유리", "김수린"], [], ""),
+        ("MALDI-TOF", ["박성현", "박민서"], [], ""), ("Circular Dichroism", ["박성현"], [], ""),
+        ("O2 plasma", ["박성현"], [], "물리학과"), ("IR", ["전재민", "박성현"], [], "김태규 교수님 연구실"),
+    ],
+}
+GJ_TABS = [  # (키, 탭 이름, 정/부 열을 따로 보일지)
+    ("roles", "🧭 학기 담당", False),
+    ("equip", "🔧 랩 장비", True),
+    ("tech", "🧪 실험 기술", False),
+    ("ext", "🏢 외부 장비", False),
+]
+
+_GJ_CSS = """
+/* ── Group job ── */
+.gjtbl{width:100%;border-collapse:collapse;font-size:0.9rem;background:var(--surface);}
+.gjtbl th,.gjtbl td{border:1px solid var(--line);padding:9px 12px;text-align:left;vertical-align:middle;}
+.gjtbl thead th{background:#F1F5F9;font-weight:700;color:var(--ink);font-size:0.84rem;white-space:nowrap;}
+.gjtbl td.it{font-weight:600;color:var(--ink);}
+.gjtbl td.nt{font-size:0.8rem;color:var(--muted);}
+.gjp{display:inline-block;font-size:0.8rem;font-weight:700;padding:3px 10px;border-radius:999px;margin:2px 4px 2px 0;white-space:nowrap;}
+.gjp.main{background:var(--accent-soft);color:var(--accent-dark);}
+.gjp.sub{background:#F1F5F9;color:#475569;border:1px solid var(--line);}
+.gjnone{font-size:0.8rem;color:#CBD5E1;font-weight:600;}
+.gjsec{font-size:0.86rem;font-weight:800;color:var(--accent-dark);margin:16px 0 4px;}
+.gjsec:first-child{margin-top:2px;}
+.gjrow{display:flex;gap:10px;align-items:center;padding:8px 2px;border-bottom:1px solid var(--line);font-size:0.92rem;flex-wrap:wrap;}
+.gjrow:last-child{border-bottom:none;}
+.gjrow .gi{font-weight:600;color:var(--ink);}
+.gjrow .gn{font-size:0.8rem;color:var(--muted);}
+.gjtag{font-size:0.7rem;font-weight:800;padding:1px 8px;border-radius:6px;flex:none;}
+.gjtag.main{background:var(--accent);color:#fff;}
+.gjtag.sub{background:#E2E8F0;color:#475569;}
+.gjtag.co{background:#FEF3C7;color:#B45309;}
+"""
+CSS = CSS.replace("</style>", _GJ_CSS + "</style>")
+
+
+# ── 시트 읽기 ──
+def _gj_names(s):
+    """'하승연, 김강민, 이건우(CVD)' → (['하승연','김강민','이건우'], '이건우: CVD')."""
+    names, notes = [], []
+    for tok in re.split(r"[,/]", s or ""):
+        tok = tok.strip()
+        if not tok:
+            continue
+        m = re.fullmatch(r"(.+?)\s*\((.+)\)", tok)
+        if m:
+            names.append(m.group(1).strip())
+            notes.append((m.group(1).strip(), m.group(2).strip()))
+        else:
+            names.append(tok)
+    if len(names) == 1 and notes:
+        note = notes[0][1]
+    else:
+        note = ", ".join(f"{n}: {x}" for n, x in notes)
+    return names, note
+
+
+def _gj_split_item(s):
+    """'XPS (중앙분석센터)' → ('XPS', '중앙분석센터')  (외부 장비용)."""
+    m = re.fullmatch(r"(.+?)\s*\((.+)\)", s.strip())
+    return (m.group(1).strip(), m.group(2).strip()) if m else (s.strip(), "")
+
+
+def parse_group_job(rows):
+    """Group job 탭의 행들 → (학기, {roles/equip/tech/ext: [(항목, [정], [부], 비고)]})."""
+    rows = [[(c or "").strip() for c in r] for r in rows]
+    norm = lambda c: re.sub(r"\s+", "", c)
+
+    def cell(r, j):
+        return rows[r][j] if (j is not None and 0 <= j < len(rows[r])) else ""
+
+    # 머리글 행: '장비' 칸과 '기술' 칸이 같이 있는 줄
+    hr = next((i for i, r in enumerate(rows)
+               if "장비" in [norm(c) for c in r] and "기술" in [norm(c) for c in r]), None)
+    if hr is None:
+        raise ValueError("시트에서 '장비' · '기술' 머리글 행을 찾지 못했어요.")
+    hdr = [norm(c) for c in rows[hr]]
+    eq_j, tech_j = hdr.index("장비"), hdr.index("기술")
+    role_j = next((j for j, c in enumerate(hdr) if re.search(r"\d+년도?\d학기", c)), None)
+
+    # 외부 장비 머리글 행 (그 위까지가 장비·기술·학기 담당 영역)
+    xr = next((i for i in range(hr + 1, len(rows))
+               if "외부장비" in [norm(c) for c in rows[i]]), None)
+    end = len(rows) if xr is None else xr
+    while end > hr + 1 and any("외부장비" in norm(c) for c in rows[end - 1]):
+        end -= 1                                          # '외부 장비 측정 담당' 제목 줄 제외
+
+    # 학기 이름: 제목 줄의 '2026년도 2학기' → 없으면 머리글의 '26년도 2학기'
+    term = ""
+    for r in rows[:hr + 1]:
+        for c in r:
+            m = re.search(r"(\d{2,4})\s*년도?\s*(\d)\s*학기", c)
+            if m:
+                y = m.group(1)
+                term = f"{'20' + y if len(y) == 2 else y}년도 {m.group(2)}학기"
+                break
+        if term:
+            break
+
+    data = {"roles": [], "equip": [], "tech": [], "ext": []}
+    for i in range(hr + 1, end):
+        it = cell(i, eq_j)
+        if it:
+            mn, n1 = _gj_names(cell(i, eq_j + 1))
+            sb, n2 = _gj_names(cell(i, eq_j + 2))
+            data["equip"].append((it, mn, sb, ", ".join(x for x in (n1, n2) if x)))
+        it = cell(i, tech_j)
+        if it:
+            mn, n1 = _gj_names(cell(i, tech_j + 1))
+            data["tech"].append((it, mn, [], n1))
+        it = cell(i, role_j)
+        if it:
+            mn, n1 = _gj_names(cell(i, role_j + 1))
+            data["roles"].append((it, mn, [], n1))
+    if xr is not None:
+        xj = [norm(c) for c in rows[xr]].index("외부장비")
+        for i in range(xr + 1, len(rows)):
+            it = cell(i, xj)
+            if not it:
+                continue
+            name, inote = _gj_split_item(it)
+            mn, n1 = _gj_names(cell(i, xj + 1))
+            data["ext"].append((name, mn, [], ", ".join(x for x in (inote, n1) if x)))
+    if not (data["equip"] or data["tech"] or data["roles"]):
+        raise ValueError("시트에서 담당 항목을 하나도 읽지 못했어요.")
+    return term, data
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_group_job(link):
+    """서비스 계정/공개 CSV(_fetch_sheet_rows) → 안 되면 gviz CSV 순서로 시도."""
+    errs = []
+    try:
+        return parse_group_job(_fetch_sheet_rows(link))
+    except Exception as e:
+        errs.append(str(e))
+    sid, gid = _sheet_parts(link)
+    if sid:
+        try:
+            url = (f"https://docs.google.com/spreadsheets/d/{sid}/gviz/tq?tqx=out:csv&headers=0"
+                   + (f"&gid={gid}" if gid else ""))
+            return parse_group_job(_http_rows(url))
+        except Exception as e:
+            errs.append(str(e))
+    raise RuntimeError(" / ".join(errs))
+
+
+# ── 렌더링 ──
+def _gj_people(names, cls):
+    if not names:
+        return "<span class='gjnone'>미정</span>"
+    return "".join(f"<span class='gjp {cls}'>{_esc(n)}</span>" for n in names)
+
+
+def render_gj_table(rows, with_sub):
+    head = ("<tr><th>항목</th><th>담당" + ("(정)" if with_sub else "") + "</th>"
+            + ("<th>담당(부)</th>" if with_sub else "") + "<th>비고</th></tr>")
+    body = ""
+    for item, main, sub, note in rows:
+        body += (f"<tr><td class='it'>{_esc(item)}</td><td>{_gj_people(main, 'main')}</td>"
+                 + (f"<td>{_gj_people(sub, 'sub') if sub else ''}</td>" if with_sub else "")
+                 + f"<td class='nt'>{_esc(note)}</td></tr>")
+    return (f"<div class='vscroll'><table class='gjtbl'><thead>{head}</thead>"
+            f"<tbody>{body}</tbody></table></div>")
+
+
+def gj_members(data):
+    """Group job 에 이름이 나오는 사람 (VAC_ROSTER 순서 → 그 외 이름은 뒤에)."""
+    seen = {n for rows in data.values() for _, m, s, _ in rows for n in m + s}
+    return [n for n in VAC_ROSTER if n in seen] + sorted(seen - set(VAC_ROSTER))
+
+
+def gj_of(data, name):
+    """한 사람의 담당 목록 → [(탭 이름, 항목, 역할, 비고)]."""
+    out = []
+    for key, tab, with_sub in GJ_TABS:
+        for item, main, sub, note in data.get(key, []):
+            if name in main:
+                role = "정" if with_sub else ("공동" if len(main) > 1 else "담당")
+                out.append((tab, item, role, note))
+            elif name in sub:
+                out.append((tab, item, "부", note))
+    return out
+
+
+def render_gj_person(data, name):
+    jobs = gj_of(data, name)
+    if not jobs:
+        return f"<div class='vempty'>{_esc(name)} 님의 이번 학기 담당 업무가 없어요.</div>"
+    cls = {"정": "main", "담당": "main", "공동": "co", "부": "sub"}
+    out, last = "", None
+    for tab, item, role, note in jobs:
+        if tab != last:
+            out += f"<div class='gjsec'>{tab}</div>"
+            last = tab
+        out += (f"<div class='gjrow'><span class='gjtag {cls[role]}'>{role}</span>"
+                f"<span class='gi'>{_esc(item)}</span>"
+                + (f"<span class='gn'>· {_esc(note)}</span>" if note else "") + "</div>")
+    return f"<div class='guidebox'>{out}</div>"
+
+
+def render_group_job_section():
+    link = GJ_SHEET_LINK.strip()
+    live, err = True, ""
+    try:
+        term, data = load_group_job(link)
+        term = term or GJ_FALLBACK_TERM
+    except Exception as e:
+        live, err = False, str(e)
+        term, data = GJ_FALLBACK_TERM, GJ_FALLBACK
+
+    st.markdown(f"""
+<div class="section" id="groupjob" style="padding:64px 0 8px;">
+  <div class="section-head">
+    <h2>Group job</h2>
+    <p>{_esc(term)} 담당 업무 · 장비 · 실험 기술 · 외부 장비 측정 담당자를 확인할 수 있어요.</p>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+    if not live:
+        st.warning(
+            "Group job 시트를 불러오지 못해서, 코드에 저장된 예비 내용(2026년도 2학기)을 보여 주고 있어요.\n\n"
+            f"• 원인: `{err}`\n\n"
+            "확인할 것: ① [공유] → ‘링크가 있는 모든 사용자: 뷰어’ "
+            "② 계속 안 되면 [파일] → ‘Google 스프레드시트로 저장’ 후 새 링크를 코드의 GJ_SHEET_LINK 에 넣기")
+
+    sid, _ = _sheet_parts(link)
+    sheet_url = _order_sheet_url(link) if sid else "#"
+    n_items = sum(len(r) for r in data.values())
+    unassigned = [it for r in data.values() for it, m, s, _ in r if not (m or s)]
+    g1, g2 = st.columns([4, 1])
+    with g1:
+        st.markdown(
+            f"<div class='syncbar'>🔗 <a href='{sheet_url}' target='_blank'>Group job 시트</a> "
+            + ("연동" if live else "<b style='color:#B45309'>불러오기 실패 · 예비 데이터</b>")
+            + f" &nbsp;·&nbsp; <b>{_esc(term)}</b> &nbsp;·&nbsp; 전체 <b>{n_items}개</b> 항목"
+            + (f" &nbsp;·&nbsp; 담당 미정 <b style='color:#B45309'>{_esc(', '.join(unassigned))}</b>"
+               if unassigned else "")
+            + "</div>", unsafe_allow_html=True)
+    with g2:
+        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+        st.button("🔄 새로고침", key="refresh_gj", on_click=st.cache_data.clear,
+                  use_container_width=True)
+
+    tabs = st.tabs([t for _, t, _ in GJ_TABS] + ["👤 구성원별"])
+    for tab, (key, _, with_sub) in zip(tabs, GJ_TABS):
+        with tab:
+            if data.get(key):
+                st.markdown(render_gj_table(data[key], with_sub), unsafe_allow_html=True)
+            else:
+                st.info("시트에서 이 항목을 찾지 못했어요.")
+    with tabs[-1]:
+        members = gj_members(data)
+        if not members:
+            st.info("담당자 이름이 없어요.")
+            return
+        c1, _ = st.columns([2, 3])
+        with c1:
+            who = st.selectbox(
+                "구성원", members, key="gj_person",
+                format_func=lambda n: f"{n}  ·  {group_of(_short(n)) or '-'}  ·  {len(gj_of(data, n))}건")
+        st.markdown(render_gj_person(data, who), unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════
 #  상단 (내비 + 히어로)
 # ══════════════════════════════════════════════════
 nav_hero_html = f"""
 <div class="nav"><div class="nav-in">
   <div class="brand">{LAB['name']}<span class="dot">.</span></div>
   <div class="links">
-    <a href="#orders">주문현황</a><a href="#vacation">휴가현황</a><a href="#schedule">공강표</a>
+    <a href="#orders">주문현황</a><a href="#vacation">휴가현황</a><a href="#groupjob">Group job</a><a href="#schedule">공강표</a>
     <a href="#contact">문의</a>
   </div>
 </div></div>
@@ -1497,6 +1821,7 @@ nav_hero_html = f"""
   <div class="cta-row">
     <a class="btn btn-primary" href="#orders">주문 현황 보기</a>
     <a class="btn btn-ghost" href="#vacation">휴가 현황 보기</a>
+    <a class="btn btn-ghost" href="#groupjob">Group job 보기</a>
     <a class="btn btn-ghost" href="#schedule">공강표 보기</a>
   </div>
 </div>
@@ -1677,6 +2002,11 @@ else:
 #  🌴 휴가 사용 현황 (구글 시트 읽기 전용)
 # ══════════════════════════════════════════════════
 render_vacation_section()
+
+# ══════════════════════════════════════════════════
+#  👥 Group job
+# ══════════════════════════════════════════════════
+render_group_job_section()
 
 # ══════════════════════════════════════════════════
 #  공강표 (네이티브 탭)
